@@ -39,6 +39,9 @@ public class Transition<T> {
     void evaluate(ConcurrentMap<T, Integer> state) {
         for (T edge: input.keySet()) {
             state.put(edge, state.get(edge) - input.get(edge));
+            if(state.get(edge) == 0) {
+                state.remove(edge);
+            }
         }
 
         for (T edge: reset) {

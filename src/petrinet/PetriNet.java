@@ -22,8 +22,8 @@ public class PetriNet<T> {
     private class ThreadInfoElement {
         Collection<Transition<T>> transitions;
         Semaphore mutex;
-        Transition<T> choosen;
-        boolean isChoosen;
+        Transition<T> chosen;
+        boolean isChosen;
 
         ThreadInfoElement(Collection<Transition<T>> transitions, Semaphore mutex) {
             this.transitions = transitions;
@@ -37,23 +37,39 @@ public class PetriNet<T> {
     private class Decisive implements Runnable {
         @Override
         public void run() {
-            List<Thread> threads = new ArrayList<>();
             int i = 0;
+            List<Thread> threads = new ArrayList<>();
             try {
                 while (!Thread.currentThread().isInterrupted()) {
                     write_mutex.acquire();
+
                     if (threads.size() == i) {
                         threads.add(queue.take());
                     }
+
                     Thread thread = threads.get(i);
                     ThreadInfoElement info = threadsInfo.get(thread);
-                    Transition<T> chosenTransition = chooseTransition(info.transitions);
-                    if (chosenTransition != null) {
-                        info.choosen = chosenTransition;
-                        threads.remove(i);
-                        i = 0;
-                        info.mutex.release();
+
+                    if(info != null) { //if thread hasn't interrupted
+                        Transition<T> chosenTransition = chooseTransition(info.transitions);
+                        if( chosenTransition != null) {
+                            threads.remove(i);
+                            if(threadsInfo.computeIfPresent(thread, (k, v) -> { //check again if it's interrupted
+                                v.isChosen = true;
+                                v.chosen = chosenTransition;
+                                v.mutex.release();
+                                return v;
+                            }) != null ) {
+                                i = 0;
+                            } else {
+                                write_mutex.release();
+                            }
+                        } else {
+                            i++;
+                            write_mutex.release();
+                        }
                     } else {
+                        threads.remove(i);
                         write_mutex.release();
                     }
                 }
@@ -68,6 +84,7 @@ public class PetriNet<T> {
         this.fair = fair;
         this.decisive = new Thread(new Decisive());
         this.decisive.setDaemon(true);
+        this.decisive.setName("POMOC");
         decisive.start();
     }
 
@@ -81,17 +98,17 @@ public class PetriNet<T> {
         try {
             queue.put(current);
             mutex.acquire();
-            Transition<T> result = threadsInfo.get(current).choosen;
+            Transition<T> result = threadsInfo.get(current).chosen;
             threadsInfo.remove(current);
             queue.remove(current);
             result.evaluate(currentState);
-            mutex.release();
+            write_mutex.release();
             return result;
         } catch (InterruptedException e) {
-//            if (threadsInfo.get(current).choosen != null)
-//                mutex.release();
-//            queue.remove(current);
-//            threadsInfo.remove(current);
+            if (threadsInfo.get(current).isChosen)
+                write_mutex.release();
+            queue.remove(current);
+            threadsInfo.remove(current);
             throw e;
         }
     }
