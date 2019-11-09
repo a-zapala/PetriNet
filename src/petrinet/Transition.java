@@ -46,7 +46,7 @@ public class Transition<T> {
         }
 
         for(T edge : output.keySet()) {
-            state.compute(edge, (k,v) -> (v == null) ? output.get(edge) : v + output.get(edge)); //TODO consider concurrent
+            state.compute(edge, (k,v) -> (v == null) ? output.get(edge) : v + output.get(edge));
         }
     }
 
