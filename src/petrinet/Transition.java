@@ -1,10 +1,7 @@
 package petrinet;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 public class Transition<T> {
 
@@ -21,7 +18,7 @@ public class Transition<T> {
         this.inhibitor = inhibitor;
     }
 
-    public boolean isEnabled(ConcurrentMap<T,Integer> state) {
+    boolean isEnabled(Map<T,Integer> state) {
         for (T edge: input.keySet()) {
             if(input.get(edge) > state.getOrDefault(edge,0)) {
                 return false;
@@ -36,7 +33,7 @@ public class Transition<T> {
         return true;
     }
 
-    void evaluate(ConcurrentMap<T, Integer> state) {
+    Map<T, Integer> evaluate(Map<T, Integer> state) {
         for (T edge: input.keySet()) {
             state.put(edge, state.get(edge) - input.get(edge));
             if(state.get(edge) == 0) {
@@ -51,6 +48,8 @@ public class Transition<T> {
         for(T edge : output.keySet()) {
             state.compute(edge, (k,v) -> (v == null) ? output.get(edge) : v + output.get(edge));
         }
+
+        return state;
     }
 
 

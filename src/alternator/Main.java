@@ -14,7 +14,7 @@ import petrinet.Transition;
 
 public class Main {
 
-    private static final long SIMULATION_TIME = 30000;
+    private static final long SIMULATION_TIME = 300;
 
     private static List<Place> processes = new ArrayList<>(Arrays.asList(Place.P1, Place.P2, Place.P3));
     private static List<Place> histories = new ArrayList<>(Arrays.asList(Place.H1, Place.H2, Place.H3));
@@ -26,28 +26,30 @@ public class Main {
     private static Collection<Transition<Place>> createTransitionForProcess(int processNumber) {
         Collection<Transition<Place>> result = new ArrayList<>();
 
-        Map<Place, Integer> input1 = new HashMap<>();
-        Map<Place, Integer> output1 = new HashMap<>();
-        Collection<Place> reset1 = new ArrayList<>();
-        Collection<Place> inhibitor1 = Collections.singleton(histories.get(processNumber));
+        Map<Place, Integer> input = Map.ofEntries(
+                Map.entry(processes.get(processNumber), 1),
+                Map.entry(Place.START, 1)
+        );
+        Map<Place, Integer> output = Map.ofEntries(
+                Map.entry(Place.EXE, 1),
+                Map.entry(histories.get(processNumber), 1)
+        );
+        Collection<Place> reset = Arrays.asList(histories.get((processNumber + 1) % 3),histories.get((processNumber + 2) % 3));
+        Collection<Place> inhibitor = Collections.singleton(histories.get(processNumber));
+        result.add(new Transition<>(input, reset, inhibitor, output));
 
-        input1.put(processes.get(processNumber), 1);
-        input1.put(Place.START, 1);
-        output1.put(Place.EXE, 1);
-        output1.put(histories.get(processNumber), 1);
-        reset1.add(histories.get((processNumber + 1) % 3));
-        reset1.add(histories.get((processNumber + 2) % 3));
 
-        Map<Place, Integer> input2 = new HashMap<>();
-        Map<Place, Integer> output2 = new HashMap<>();
-        Collection<Place> reset2 = new ArrayList<>();
-        Collection<Place> inhibitor2 = Collections.singleton(processes.get(processNumber));
-        input2.put(Place.EXE, 1);
-        output2.put(processes.get(processNumber), 1);
-        output2.put(Place.START, 1);
+        input = Map.ofEntries(
+                Map.entry(Place.EXE, 1)
+        );
+        output =  Map.ofEntries(
+                Map.entry(processes.get(processNumber), 1),
+                Map.entry(Place.START,1)
+                );
+        reset = Collections.emptyList();
+        inhibitor = Collections.singleton(processes.get(processNumber));
+        result.add(new Transition<>(input, reset, inhibitor, output));
 
-        result.add(new Transition<>(input1, reset1, inhibitor1, output1));
-        result.add(new Transition<>(input2, reset2, inhibitor2, output2));
         return result;
     }
 
@@ -67,7 +69,7 @@ public class Main {
         private PetriNet<Place> net;
         private String name;
 
-        public ProcessSimulator(Collection<Transition<Place>> transitions, PetriNet<Place> net, String name) {
+        ProcessSimulator(Collection<Transition<Place>> transitions, PetriNet<Place> net, String name) {
             this.transitions = transitions;
             this.net = net;
             this.name = name;
@@ -102,6 +104,7 @@ public class Main {
 
         Set<Map<Place, Integer>> before = net.reachable(transitions);
 
+        assert before.size() == 7;
         System.out.println("Number of marking:" + before.size());
         for (Map<Place, Integer> state : before) {
             if (state.getOrDefault(Place.EXE, 0) > 1) {
