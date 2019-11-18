@@ -15,7 +15,6 @@ import petrinet.Transition;
 
 public class Main {
     private static final int THREAD_NUMBER = 4;
-
     private enum Place {
         A, B1, B2, B3, B1_T, B2_T, ACC, RES, END
     }
@@ -162,9 +161,9 @@ public class Main {
                     numberOfFire++;
                 }
             } catch (InterruptedException e) {
-                System.out.println("Thread number " + number + " interrupted");
+                Thread.currentThread().interrupt();
             }
-            System.out.println("Number of fires " + numberOfFire);
+            System.out.println("Number of fires: " + numberOfFire);
         }
     }
 
@@ -187,17 +186,9 @@ public class Main {
             thread.start();
         }
 
-        Thread.sleep(200);
-        for(int i = THREAD_NUMBER/2; i < THREAD_NUMBER; i++){
-            threads.get(i).interrupt();
-        }
-
         net.fire(endTransition);
         Set<Map<Place,Integer>> lastState = net.reachable(endTransition);
-        assert lastState.equals(net.reachable(commonTransition));
-        assert lastState.size() == 1;
-        System.out.println(lastState.iterator().next().get(Place.RES));
+        System.out.println("Result:" + lastState.iterator().next().get(Place.RES));
         threadGroup.interrupt();
-
     }
 }

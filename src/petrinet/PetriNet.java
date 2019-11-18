@@ -17,63 +17,51 @@ import java.util.concurrent.Semaphore;
 public class PetriNet<T> {
     private boolean fair;
 
-    private final Semaphore decisiveMutex = new Semaphore(1);
+    private final Semaphore readStateMutex = new Semaphore(1, true);
     private ConcurrentMap<T, Integer> currentState;
-    private BlockingQueue<Thread> queue = new LinkedBlockingDeque<>();
-    private ConcurrentMap<Thread, ThreadInfoElement> threadsInfo = new ConcurrentHashMap<>();
+    private BlockingQueue<ThreadInfo> queue = new LinkedBlockingDeque<>();
 
-    private class ThreadInfoElement {
+    private class ThreadInfo {
+        Thread thread;
         Collection<Transition<T>> transitions;
-        Semaphore mutex;
+        Semaphore threadMutex;
+        Semaphore decisiveMutex;
         Transition<T> chosen;
-        boolean isChosen;
 
-        ThreadInfoElement(Collection<Transition<T>> transitions, Semaphore mutex) {
+        ThreadInfo(Thread thread, Collection<Transition<T>> transitions, Semaphore threadMutex, Semaphore decisiveMutex) {
+            this.thread = thread;
             this.transitions = transitions;
-            this.mutex = mutex;
+            this.threadMutex = threadMutex;
+            this.decisiveMutex = decisiveMutex;
         }
     }
-
-
-    private Thread decisive;
 
     private class Decisive implements Runnable {
         @Override
         public void run() {
             int i = 0;
-            List<Thread> threads = new ArrayList<>();
+            List<ThreadInfo> threads = new ArrayList<>();
             try {
                 while (!Thread.currentThread().isInterrupted()) {
-                    decisiveMutex.acquire();
-
                     if (threads.size() == i) {
                         threads.add(queue.take());
                     }
-
-                    Thread thread = threads.get(i);
-                    ThreadInfoElement info = threadsInfo.get(thread);
-
-                    if (info != null) { //if thread hasn't interrupted
-                        Transition<T> chosenTransition = chooseTransition(info.transitions); //TODO synchronise
+                    ThreadInfo info = threads.get(i);
+                    if (info.decisiveMutex.availablePermits() == 0) { //if thread hasn't interrupted
+                        Transition<T> chosenTransition = chooseTransition(info.transitions);
                         if (chosenTransition != null) {
                             threads.remove(i);
-                            if (threadsInfo.computeIfPresent(thread, (k, v) -> { //check again if it's interrupted
-                                v.isChosen = true;
-                                v.chosen = chosenTransition;
-                                v.mutex.release();
-                                return v;
-                            }) != null) {
-                                i = 0;
-                            } else {
-                                decisiveMutex.release();
-                            }
+                            i = 0;
+                            info.chosen = chosenTransition;
+                            readStateMutex.acquire();
+                            info.threadMutex.release();
+                            info.decisiveMutex.acquire();
+                            readStateMutex.release();
                         } else {
                             i++;
-                            decisiveMutex.release();
                         }
                     } else {
                         threads.remove(i);
-                        decisiveMutex.release();
                     }
                 }
             } catch (InterruptedException ex) {
@@ -83,35 +71,30 @@ public class PetriNet<T> {
     }
 
     public PetriNet(Map<T, Integer> initial, boolean fair) {
-        this.currentState = new ConcurrentHashMap<>(initial);
+        this.currentState = new ConcurrentHashMap<>(clone(initial));
         this.fair = fair;
-        this.decisive = new Thread(new Decisive());
-        this.decisive.setDaemon(true);
-        this.decisive.setName("Decisive");
+        Thread decisive = new Thread(new Decisive());
+        decisive.setDaemon(true);
+        decisive.setName("Decisive");
         decisive.start();
     }
 
 
     public Transition<T> fire(Collection<Transition<T>> transitions) throws InterruptedException {
         Thread current = Thread.currentThread();
-        assert (!threadsInfo.containsKey(current) && !queue.contains(current));
-        Semaphore mutex = new Semaphore(0);
-        threadsInfo.put(current, new ThreadInfoElement(transitions, mutex));
-
+        Semaphore threadMutex = new Semaphore(0);
+        Semaphore decisiveMutex = new Semaphore(0);
+        ThreadInfo info = new ThreadInfo(current, transitions, threadMutex, decisiveMutex);
         try {
-            queue.put(current);
-            mutex.acquire();
-            Transition<T> result = threadsInfo.get(current).chosen;
-            threadsInfo.remove(current);
-            queue.remove(current);
+            queue.put(info);
+            threadMutex.acquire();
+            Transition<T> result = info.chosen;
             result.evaluate(currentState);
             decisiveMutex.release();
             return result;
         } catch (InterruptedException e) {
-            queue.remove(current);
-            ThreadInfoElement info = threadsInfo.remove(current);
-            if (info.isChosen)
-                decisiveMutex.release();
+            queue.remove(info);
+            info.decisiveMutex.release();
             throw e;
         }
     }
@@ -129,12 +112,18 @@ public class PetriNet<T> {
     }
 
     public Set<Map<T, Integer>> reachable(Collection<Transition<T>> transitions) {
-        Map<T, Integer> init = clone(currentState); //TODO lock on this state ask Zaroda
         Set<Map<T, Integer>> result = new HashSet<>();
-        result.add(init);
-        for (Transition<T> trans : transitions) {
-            if (trans.isEnabled(init))
-                recursiveReachable(transitions, result, trans.evaluate(clone(init)));
+        try {
+            readStateMutex.acquire();
+            Map<T, Integer> init = clone(currentState);
+            readStateMutex.release();
+            result.add(init);
+            for (Transition<T> trans : transitions) {
+                if (trans.isEnabled(init))
+                    recursiveReachable(transitions, result, trans.evaluate(clone(init)));
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         return result;
     }
@@ -153,7 +142,6 @@ public class PetriNet<T> {
         Map<T, Integer> result = new HashMap<>();
         for (Map.Entry<T, Integer> entry : original.entrySet())
             result.put(entry.getKey(), entry.getValue());
-
         return result;
     }
 }

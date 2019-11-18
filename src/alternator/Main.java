@@ -14,7 +14,7 @@ import petrinet.Transition;
 
 public class Main {
 
-    private static final long SIMULATION_TIME = 300;
+    private static final long SIMULATION_TIME = 30000;
 
     private static List<Place> processes = new ArrayList<>(Arrays.asList(Place.P1, Place.P2, Place.P3));
     private static List<Place> histories = new ArrayList<>(Arrays.asList(Place.H1, Place.H2, Place.H3));
@@ -85,7 +85,7 @@ public class Main {
                     net.fire(transitions);
                 }
             } catch (InterruptedException e) {
-                System.out.println("Thread " + name + " interrupted");
+                Thread.currentThread().interrupt();
             }
         }
     }
@@ -104,7 +104,6 @@ public class Main {
 
         Set<Map<Place, Integer>> before = net.reachable(transitions);
 
-        assert before.size() == 7;
         System.out.println("Number of marking:" + before.size());
         for (Map<Place, Integer> state : before) {
             if (state.getOrDefault(Place.EXE, 0) > 1) {

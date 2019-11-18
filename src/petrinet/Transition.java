@@ -51,6 +51,4 @@ public class Transition<T> {
 
         return state;
     }
-
-
 }

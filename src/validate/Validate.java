@@ -79,5 +79,4 @@ public class Validate {
             error(4);
         }
     }
-
 }
